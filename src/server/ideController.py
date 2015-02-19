@@ -1,3 +1,4 @@
+import json
 import cherrypy
 from ws4py.websocket import WebSocket
 from genshi.template import TemplateLoader
@@ -20,25 +21,43 @@ class IDEController(object):
     self._logger = logger
 
     # XXX Temp dummy vars
-    self.data = ""
+    self.data = "xzczxc"
 
     self._logger.debug("IDEController instance created")
 
   @cherrypy.expose
   def index(self):
-    return "Hello world"
+    #return "Hello world"
     # TODO Return page/template render for the IDE part
-    # tmpl = loader.load('edit.html')
+    tmpl = self._loader.load('edit.html')
     # # set args in generate as key1=val1, key2=val2
-    # stream = tmpl.generate()
-    # return stream.render('html')
+    stream = tmpl.generate()
+    return stream.render('html')
 
   @cherrypy.expose
-  def sendEdit(self, content):
-    # XXX Temp dummy method for test
+  @cherrypy.tools.json_in()
+  @cherrypy.tools.json_out()
+  def save(self):
+    json_data = cherrypy.request.json
+
+    content = ""
     self.data += content
+
+    # Send as json representation
+    ret = json.dumps(dict(test=self.data, othervar=2))
     for user in IDEWebSocket.IDEClients:
-      user.send(self.data)
+      user.send(ret)
+
+    # Return default structure {code, status, merrage}
+    return {} # ok for now
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  @cherrypy.tools.json_in()
+  def open(self):
+    return {'file':    "dummy",
+            'vers':    0,
+            'content': "Hello world from controller"}
 
   @cherrypy.expose
   def refreshEdit(self):
