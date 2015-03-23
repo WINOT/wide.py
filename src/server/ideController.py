@@ -49,6 +49,8 @@ def set_author_bool_in_dict(serialized_changes, user):
   for sc in serialized_changes:
     sc['author'] = (sc['author'] == user)
 
+def create_exec_output_dict(output):
+  return {'output' : output}
 
 class IDEController(object):
   """
@@ -83,6 +85,7 @@ class IDEController(object):
     self.notify_file_edit = self._save_callback
     self.notify_get_project_nodes = self._tree_callback
     self.notify_get_file_content = self._dump_callback
+    self.notify_program_output = self._exec_output_callback
 
     # Register controller to events
     self._app.register_application_listener(self)
@@ -371,6 +374,18 @@ class IDEController(object):
   @cherrypy.expose
   @require_identify()
   def export(self, path, **kw):
+    """
+    Download the zip archive with the file under the specified project directory
+    Method : GET
+    (Path : /ide/export)
+    
+    Input must be JSON of the following format:
+      {
+        'path':    '<<The project directory from where to compress>>'
+      }
+
+    Output in response will be a zip file
+    """
     self._logger.debug("Export by {0} ({1}:{2}) path: {3}".format(cherrypy.session['username'],
                                                                   request.remote.ip,
                                                                   request.remote.port,
@@ -396,6 +411,95 @@ class IDEController(object):
     request.hooks.attach('on_end_request', lambda: os.unlink(request.archive_path))
     # Return archive
     return static.serve_download(archive_path)
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  @cherrypy.tools.json_in()
+  @require_identify()
+  def execstart(self):
+    """
+    Execute the program with the specified arguments and file entry point
+    Method : PUT
+    (Path : /ide/execstart)
+    
+    Input must be JSON of the following format:
+      {
+        'file':    '<<Filepath of entry point of the program>>',
+        'args':    '<<Arguments to send to the program>>'
+      }
+    """
+    self._logger.debug("Execstart by {0} ({1}:{2}) JSON: {3}".format(cherrypy.session['username'],
+                                                                     request.remote.ip,
+                                                                     request.remote.port,
+                                                                     request.json))
+
+    username = cherrypy.session['username']
+    filename = request.json['file']
+    args = request.json['args']
+    self._logger.info("Execstart on file {3} with '{4}' requested by {0} ({1}:{2})".format(username,
+                                                                                           request.remote.ip,
+                                                                                           request.remote.port,
+                                                                                           filename,
+                                                                                           args))
+    if self.is_valid_path(filename):
+      self._app.program_launch(filename, args, username)
+    else:
+      raise HTTPError(400, "Invalid path")
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  @cherrypy.tools.json_in()
+  @require_identify()
+  def execinput(self):
+    """
+    Send input text to a running program
+    Method : PUT
+    (Path : /ide/execinput)
+    
+    Input must be JSON of the following format:
+      {
+        'data':    '<<Data input to send to the program>>'
+      }
+    """
+    self._logger.debug("Execinput by {0} ({1}:{2}) JSON: {3}".format(cherrypy.session['username'],
+                                                                     request.remote.ip,
+                                                                     request.remote.port,
+                                                                     request.json))
+
+    username = cherrypy.session['username']
+    data = request.json['data']
+    self._logger.info("Execinput with data {3} requested by {0} ({1}:{2})".format(username,
+                                                                                  request.remote.ip,
+                                                                                  request.remote.port,
+                                                                                  data))
+
+    self._app.program_input(data, username)
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  @cherrypy.tools.json_in()
+  @require_identify()
+  def execkill(self):
+    """
+    Terminate a running program
+    Method : PUT
+    (Path : /ide/execkill)
+    
+    Input must be JSON of the following format:
+      {
+      }
+    """
+    self._logger.debug("Execkill by {0} ({1}:{2})".format(cherrypy.session['username'],
+                                                                     request.remote.ip,
+                                                                     request.remote.port,
+                                                                     request.json))
+
+    username = cherrypy.session['username']
+    self._logger.info("Execkill requested by {0} ({1}:{2})".format(username,
+                                                                   request.remote.ip,
+                                                                   request.remote.port))
+
+    self._app.program_kill(username)
 
   @cherrypy.expose
   @require_identify()
@@ -519,7 +623,7 @@ class IDEController(object):
                 }
       }
     """
-    self._logger.info("Tree-callback for {0}".format(caller))
+    self._logger.info("Dump-callback for {0}".format(caller))
     filename, content, version = result  # TODO Check if result is None
 
     to_send = simplejson.dumps(wrap_opCode('dump',
@@ -542,6 +646,40 @@ class IDEController(object):
     else:
       self._logger.error("{0} has no WS in server".format(caller))
 
+  def _exec_output_callback(self, output, caller):
+    """
+    Sends the output of a user program
+    This is the call back from a prgram create by /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execoutput',
+        'data': {
+                  'output':    '<<Output from the running prgram>>'
+                }
+      }
+    """
+    self._logger.info("ExecOutput-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execoutput',
+                                           create_exec_output_dict(output)))
+    
+    ws = IDEWebSocket.IDEClients.get(caller)
+    if ws:
+      try:
+        ws.send(to_send)
+        self._logger.info("{0} ({1}:{2}) WS transfer succeded".format(caller,
+                                                                      ws.peer_address[0],
+                                                                      ws.peer_address[1]))
+      except:
+        self._logger.error("{0} ({1}:{2}) WS transfer failed".format(caller,
+                                                                     ws.peer_address[0],
+                                                                     ws.peer_address[1]))
+        # Close websocket
+        ws.close(reason='Failed to send exec output')
+
+    else:
+      self._logger.error("{0} has no WS in server".format(caller))
 
 class IDEWebSocket(WebSocket):
   """
