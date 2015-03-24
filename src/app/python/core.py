@@ -499,13 +499,16 @@ class Core(object):
 
     if caller not in self._project_execs:
       if mainpath in self._project_files:
-        cmd = ['python', mainpath] + args.split()
+        # The -u switch forces subprocess to be unbuffered
+        # It is better than subprocess.bufsize parameter
+        # since it does not seems to always work
+        cmd = ['python', '-u', self._project_src_path+mainpath] + args.split()
         exec_process = subprocess.Popen(args=cmd,
                                         stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT,
                                         env=dict(), # For security purposes
-                                        cwd=self._project_src_path)
+                                        )
 
         # Save execution
         self._project_execs[caller] = Core.Exec(exec_process, args)
@@ -624,17 +627,32 @@ class Core(object):
 
   @task_time(microseconds=1)
   def task_check_program_output_notify(self):
-    for (caller, execution) in self._project_execs.iteritems():
-      out = str()
-      while True:
-        line = execution.process.stdout.readline()
-        if line:
-          out += line
-        else:
-          break
+    from select import select
+    processes_stdout = (execution.process.stdout for execution in self._project_execs.itervalues())
+    print "Before select"
+    print "Queue size is", self.tasks.qsize()
+    ready, _, _, = select(processes_stdout, [], [], 0)
+    print "After select"
 
-      # Notify
-      self._notify_event(lambda l: l.notify_program_output(out, caller))
+    for (caller, execution) in self._project_execs.items():
+      if execution.process.stdout in ready:
+        if execution.process.poll() != None:
+          # Remove from list
+          del self._project_execs[caller]
+
+          exitcode = execution.process.poll()
+          last_data = os.read(execution.process.stdout.fileno(), 1024)
+
+          # Notify
+          self._notify_event(lambda l: l.notify_program_output(last_data, caller))
+          # Notify process end
+          self._notify_event(lambda l: l.notify_program_ended(exitcode, caller))
+
+        else:
+          data = os.read(execution.process.stdout.fileno(), 1024)
+          if data != "":
+            # Notify
+            self._notify_event(lambda l: l.notify_program_output(data, caller))
 
   """
   Implementation of tasks without communication overhead.
@@ -662,7 +680,8 @@ class Core(object):
   The listener will need to implement the following functions :
    - notify_file_edit(filename, changes, version, users)
    - notify_get_project_nodes(nodes_list)
-   - notify_get_file_content(nodes_list)
+   - notify_get_file_content(result, caller)
+   - notify_program_output(output, caller)
   """
 
   def register_application_listener(self, listener):

@@ -52,6 +52,9 @@ def set_author_bool_in_dict(serialized_changes, user):
 def create_exec_output_dict(output):
   return {'output' : output}
 
+def create_exec_ended_dict(exitcode):
+  return {'exitcode' : exitcode}
+
 class IDEController(object):
   """
   Controller of the IDE/Editing part
@@ -86,7 +89,7 @@ class IDEController(object):
     self.notify_get_project_nodes = self._tree_callback
     self.notify_get_file_content = self._dump_callback
     self.notify_program_output = self._exec_output_callback
-
+    self.notify_program_ended = self._exec_ended_callback
     # Register controller to events
     self._app.register_application_listener(self)
     self.debug_bundle_id = 0
@@ -664,7 +667,35 @@ class IDEController(object):
     to_send = simplejson.dumps(wrap_opCode('execoutput',
                                            create_exec_output_dict(output)))
     
-    ws = IDEWebSocket.IDEClients.get(caller)
+    self._send_on_ws(caller, to_send)
+
+  def _exec_ended_callback(self, exitcode, caller):
+    """
+    Sends the exitcode of a user program
+    This is the call back of the end of a program create by /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execoutput',
+        'data': {
+                  'exitcode':    '<<Exit code from the ended prgram>>'
+                }
+      }
+    """
+    self._logger.info("ExecEnded-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execended',
+                                           create_exec_ended_dict(exitcode)))
+    
+    self._send_on_ws(caller, to_send)
+
+
+  """
+  Helper methods with websocket
+  """
+
+  def _send_on_ws(self, user, json_object):
+    ws = IDEWebSocket.IDEClients.get(user)
     if ws:
       try:
         ws.send(to_send)
