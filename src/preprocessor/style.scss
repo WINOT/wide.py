@@ -56,8 +56,10 @@ $side-section-border-radius: 5px;
 }
 
 .codeDisplay {
-  border-style: solid;
+  /*border-style: solid;*/
   border-width: 1px;
+  padding: 0px;
+  outline: none;
   white-space: pre-wrap;
 }
 
