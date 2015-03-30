@@ -7,6 +7,8 @@ OPCODE_IDE_SAVE = "save";
 OPCODE_IDE_DUMP = "dump";
 OPCODE_IDE_OPEN = "open";
 OPCODE_IDE_CLOSE = "close";
+OPCODE_EXEC_OUTPUT = "execoutput";
+OPCODE_EXEC_END = "execended";
 
 // used for /ide/save
 function createModifGroup(changes, file, vers) { return { file: file, vers: vers, changes: changes}; }
@@ -24,6 +26,13 @@ function createExport(directory) { return { path: directory}; }
 
 // used for /chat/send
 function createChatMessage(msg) { return { message: msg}; }
+
+// used for /ide/execstart
+function createProcessInit(filename, arguments) { return {file: filename, args: arguments}; }
+// used for /ide/execinput
+function createProcessInput(arguments) { return {data: arguments}; }
+// used for /ide/execkill
+function createProcessTermination() { return {}; }
 
 
 function ObjectAddChange(pos, content, author){

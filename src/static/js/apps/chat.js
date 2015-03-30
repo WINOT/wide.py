@@ -16,7 +16,7 @@ function AppChat(displayId, userInputId, userSendBtnId) {
   // Bind events
   var obj = this; // For closure
   this._userInputNode.keyup(function (e) { if (e.which == 13)  obj._send(); });
-  this._userSendBtnNode.click(function(e){ obj._send(); })
+  this._userSendBtnNode.click(function(e){ obj._send(); });
 
   var receiveFn = function(opCode, jsonObj){
     // Check if opCode means new member to chat

@@ -16,8 +16,25 @@ function AppIDE(lastVersionZoneId, displayZoneId, pushInterval) {
   // Handle ways of sending and receiving data from/to server
   var onopen = function(){ obj._ideState.init(); };
   var onclose = function(){ /* For future usage */ };
-  var onreceive = function(opCode, jsonObj) { obj.handleReceive(opCode, jsonObj); };
+  var onreceive = function(opCode, jsonObj) {
+    // hack
+    if(opCode.startsWith("exec")){
+      obj.execConsole.handleReceive(opCode, jsonObj);
+    }
+    else {
+      obj.handleReceive(opCode, jsonObj);
+    }
+  };
   var requestHandler = new RequestHandler('ide', onreceive, onopen, onclose);
+
+  // Execution console
+  this.execConsole = new ProjectConsoleView(requestHandler,
+                                           "console-window",
+                                           "console-display",
+                                           "console-input",
+                                           "console-text-btn",
+                                           "console-close-btn");
+  this.execConsole.hide();
 
   // States
   // Create all to avoid recreation
