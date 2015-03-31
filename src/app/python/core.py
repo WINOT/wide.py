@@ -454,8 +454,6 @@ class Core(object):
     @param caller: The user name
     @param response: Synchrone helper on which response needs to be written
     """
-    self._logger.info("create_archive task called for {0}, {1}".format(caller, path))
-
     archive_name = "{0}-{1}.zip".format(self.get_project_name(), caller)
     archive_path = os.path.join(self._project_tmp_path, archive_name)
 
@@ -493,10 +491,6 @@ class Core(object):
     @param args: Array of strings to send to executed file
     @param caller: The user name
     """
-    self._logger.info("program_launch task called for {0}, {1} {2}".format(caller, 
-                                                                           mainpath, 
-                                                                           args))
-
     if caller not in self._project_execs:
       if mainpath in self._project_files:
         # The -u switch forces subprocess to be unbuffered
