@@ -593,23 +593,7 @@ class IDEController(object):
     self._logger.info("Tree-callback for {0}".format(caller))
 
     to_send = simplejson.dumps(wrap_opCode('tree', create_tree_nodes_dict(nodes)))
-
-    ws = IDEWebSocket.IDEClients.get(caller)
-    if ws:
-      try:
-        ws.send(to_send)
-        self._logger.info("{0} ({1}:{2}) WS transfer succeded".format(caller,
-                                                                      ws.peer_address[0],
-                                                                      ws.peer_address[1]))
-      except:
-        self._logger.error("{0} ({1}:{2}) WS transfer failed".format(caller,
-                                                                     ws.peer_address[0],
-                                                                     ws.peer_address[1]))
-        # Close websocket
-        ws.close(reason='Failed to send tree')
-
-    else:
-      self._logger.error("{0} has no WS in server".format(caller))
+    self._send_on_ws(caller, to_send)
 
   def _dump_callback(self, result, caller):
     """
@@ -631,23 +615,7 @@ class IDEController(object):
 
     to_send = simplejson.dumps(wrap_opCode('dump',
                                            create_file_dump_dict(filename, version, content)))
-
-    ws = IDEWebSocket.IDEClients.get(caller)
-    if ws:
-      try:
-        ws.send(to_send)
-        self._logger.info("{0} ({1}:{2}) WS transfer succeded".format(caller,
-                                                                      ws.peer_address[0],
-                                                                      ws.peer_address[1]))
-      except:
-        self._logger.error("{0} ({1}:{2}) WS transfer failed".format(caller,
-                                                                     ws.peer_address[0],
-                                                                     ws.peer_address[1]))
-        # Close websocket
-        ws.close(reason='Failed to send dump')
-
-    else:
-      self._logger.error("{0} has no WS in server".format(caller))
+    self._send_on_ws(caller, to_send)
 
   def _exec_output_callback(self, output, caller):
     """
@@ -662,11 +630,10 @@ class IDEController(object):
                 }
       }
     """
-    self._logger.info("ExecOutput-callback for {0}".format(caller))
+    self._logger.info("ExecOutput-callback for {0} with {1}".format(caller, output))
 
     to_send = simplejson.dumps(wrap_opCode('execoutput',
                                            create_exec_output_dict(output)))
-    
     self._send_on_ws(caller, to_send)
 
   def _exec_ended_callback(self, exitcode, caller):
@@ -682,7 +649,7 @@ class IDEController(object):
                 }
       }
     """
-    self._logger.info("ExecEnded-callback for {0}".format(caller))
+    self._logger.info("ExecEnded-callback for {0} with {1}".format(caller, exitcode))
 
     to_send = simplejson.dumps(wrap_opCode('execended',
                                            create_exec_ended_dict(exitcode)))
@@ -698,19 +665,19 @@ class IDEController(object):
     ws = IDEWebSocket.IDEClients.get(user)
     if ws:
       try:
-        ws.send(to_send)
-        self._logger.info("{0} ({1}:{2}) WS transfer succeded".format(caller,
+        ws.send(json_object)
+        self._logger.info("{0} ({1}:{2}) WS transfer succeded".format(user,
                                                                       ws.peer_address[0],
                                                                       ws.peer_address[1]))
       except:
-        self._logger.error("{0} ({1}:{2}) WS transfer failed".format(caller,
+        self._logger.error("{0} ({1}:{2}) WS transfer failed".format(user,
                                                                      ws.peer_address[0],
                                                                      ws.peer_address[1]))
         # Close websocket
         ws.close(reason='Failed to send exec output')
 
     else:
-      self._logger.error("{0} has no WS in server".format(caller))
+      self._logger.error("{0} has no WS in server".format(user))
 
 class IDEWebSocket(WebSocket):
   """

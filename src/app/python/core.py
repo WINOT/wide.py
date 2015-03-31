@@ -646,7 +646,9 @@ class Core(object):
           last_data = os.read(execution.process.stdout.fileno(), 1024)
 
           # Notify
-          self._notify_event(lambda l: l.notify_program_output(last_data, caller))
+          if last_data:
+            self._notify_event(lambda l: l.notify_program_output(last_data, caller))
+            
           # Notify process end
           self._notify_event(lambda l: l.notify_program_ended(exitcode, caller))
 
