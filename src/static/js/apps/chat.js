@@ -46,18 +46,18 @@ AppChat.prototype.addUserMessage = function(text, name, time){
     $('<li>').attr("class", "chat-message-element clearfix").append(
       $('<div>').attr("class", "chat-message-header").append(
         $('<strong>').attr("class", "primary-font").append(
-          name
+          htmlEncode(name)
         )
       ).append(
         $('<small>').attr("class", "text-muted pull-right").append(
           $('<span>').attr("class", "glyphicon glyphicon-time")
         ).append(
-          time
+          htmlEncode(time)
         )
       )
     ).append(
       $('<div>').attr("class", "chat-message-body").append(
-        text
+        htmlEncode(text)
       )
     )
   );
@@ -73,16 +73,16 @@ AppChat.prototype.addProjectMemberMessage = function(text, name, time){
         $('<small>').attr("class", "text-muted").append(
           $('<span>').attr("class", "glyphicon glyphicon-time")
         ).append(
-          time
+          htmlEncode(time)
         )
       ).append(
         $('<strong>').attr("class", "primary-font pull-right").append(
-          name
+          htmlEncode(name)
         )
       )
     ).append(
       $('<div>').attr("class", "chat-message-body").append(
-        text
+        htmlEncode(text)
       )
     )
   );

@@ -46,7 +46,9 @@ ProjectConsoleView.prototype.show = function(){ this._openTag.click(); };
 ProjectConsoleView.prototype.hide = function(){ this._closeTag.click(); };
 ProjectConsoleView.prototype.addOutput = function(text){
   this._displayNode.append(
-    $('<li>').attr("class", "output-element").append(text)
+    $('<li>').attr("class", "output-element").append(
+      htmlEncode(text)
+    )
   );
   this._lowerScrollView();
 };
