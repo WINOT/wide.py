@@ -29,7 +29,14 @@ function terminate(){
 // Menu -> Project -> Export
 function menuProjectExport(){
   ideApplication.export("/");
-  return false; // stop propagation
+}
+
+// Menu -> Execution -> Run
+function menuProjectRun(){
+  var args = $("#exec-args-input").val(); // Get args
+  $("#exec-args-input").val("");          // Clear
+  $('#exec-args-window').modal('hide');   // Close modal
+  ideApplication.runCurrentFile(args);
 }
 
 // TEST_ONLY

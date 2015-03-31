@@ -17,6 +17,9 @@ function ProjectConsoleView(rqh, consoleWindow, displayId, inputId, sendBtnId, c
   // Bind event for closing console
   var onclose = function(){ obj._close(); };
   $("#"+closeBtnId).click(onclose);
+
+  // Initial state
+  this._hide();
 }
 
 ProjectConsoleView.prototype.handleReceive = function(opCode, jsonObj){
@@ -39,11 +42,9 @@ ProjectConsoleView.prototype._handleReceiveExecOutput = function(outputObj){
 ProjectConsoleView.prototype._handleReceiveExecEnded = function(endedObj){
   alert("Program ended");
   this._displayNode.empty();
-  this.hide();
+  this._hide();
 };
 
-ProjectConsoleView.prototype.show = function(){ this._openTag.click(); };
-ProjectConsoleView.prototype.hide = function(){ this._closeTag.click(); };
 ProjectConsoleView.prototype.addOutput = function(text){
   this._displayNode.append(
     $('<li>').attr("class", "output-element").append(
@@ -53,13 +54,14 @@ ProjectConsoleView.prototype.addOutput = function(text){
   this._lowerScrollView();
 };
 
-ProjectConsoleView.prototype._start = function(filename, args){
+ProjectConsoleView.prototype.start = function(filename, args){
   this._rqh.put("execstart", createProcessInit(filename, args));
+  this._show();
 };
 ProjectConsoleView.prototype._close = function(){
   this._rqh.put("execkill", createProcessTermination());
   this._displayNode.empty();
-  this.hide();
+  this._hide();
 };
 ProjectConsoleView.prototype._send = function(){
   var textInput = this._inputNode.val().trim();
@@ -74,3 +76,5 @@ ProjectConsoleView.prototype._lowerScrollView = function() {
   var parent = this._displayNode.parent();
   parent.scrollTop(parent[0].scrollHeight);
 };
+ProjectConsoleView.prototype._show = function(){ this._openTag.click(); };
+ProjectConsoleView.prototype._hide = function(){ this._closeTag.click(); };
