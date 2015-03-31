@@ -9,10 +9,14 @@ function ProjectConsoleView(rqh, consoleWindow, displayId, inputId, sendBtnId, c
   this._inputNode = $("#"+inputId);
   this._sendBtnNode = $("#"+sendBtnId);
 
-  // Bind events
+  // Bind events for text submit
   var obj = this; // For closure
   this._inputNode.keyup(function (e) { if (e.which == 13)  obj._send(); });
   this._sendBtnNode.click(function(e){ obj._send(); });
+
+  // Bind event for closing console
+  var onclose = function(){ obj._close(); };
+  $("#"+closeBtnId).click(onclose);
 }
 
 ProjectConsoleView.prototype.handleReceive = function(opCode, jsonObj){
@@ -44,6 +48,7 @@ ProjectConsoleView.prototype.addOutput = function(text){
   this._displayNode.append(
     $('<li>').attr("class", "output-element").append(text)
   );
+  this._lowerScrollView();
 };
 
 ProjectConsoleView.prototype._start = function(filename, args){
@@ -51,6 +56,8 @@ ProjectConsoleView.prototype._start = function(filename, args){
 };
 ProjectConsoleView.prototype._close = function(){
   this._rqh.put("execkill", createProcessTermination());
+  this._displayNode.empty();
+  this.hide();
 };
 ProjectConsoleView.prototype._send = function(){
   var textInput = this._inputNode.val().trim();
@@ -60,4 +67,8 @@ ProjectConsoleView.prototype._send = function(){
     this.addOutput(textInput);
     this._rqh.put("execinput", createProcessInput(textInput+"\n"));
   }
+};
+ProjectConsoleView.prototype._lowerScrollView = function() {
+  var parent = this._displayNode.parent();
+  parent.scrollTop(parent[0].scrollHeight);
 };

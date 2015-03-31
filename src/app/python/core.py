@@ -532,8 +532,9 @@ class Core(object):
     @param caller: The user name
     """
     if caller in self._project_execs:
-      self._project_execs[caller].process.stdin.write(data)
-      self._project_execs[caller].process.stdin.flush()
+      user_execution = self._project_execs[caller]
+      user_execution.process.stdin.write(data)
+      user_execution.process.stdin.flush()
     else:
       pass # notify 'no running program for user'
 
@@ -546,7 +547,11 @@ class Core(object):
 
     @param caller: The user name
     """
-    pass
+    if caller in self._project_execs:
+      user_execution = self._project_execs[caller]
+      user_execution.process.stdin.close()
+      user_execution.process.terminate()
+      del self._project_execs[caller]
 
   """
   Periodic tasks call section
@@ -629,10 +634,7 @@ class Core(object):
   def task_check_program_output_notify(self):
     from select import select
     processes_stdout = (execution.process.stdout for execution in self._project_execs.itervalues())
-    print "Before select"
-    print "Queue size is", self.tasks.qsize()
     ready, _, _, = select(processes_stdout, [], [], 0)
-    print "After select"
 
     for (caller, execution) in self._project_execs.items():
       if execution.process.stdout in ready:
