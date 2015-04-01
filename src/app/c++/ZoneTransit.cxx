@@ -49,6 +49,7 @@ BOOST_PYTHON_MODULE(libZoneTransit)
   //dans ce cas, je specifie seulement le get, donc les attributs sont publics en read only seulement
     .add_property("position", &Modification::getPosition)
     .add_property("size", &Modification::getTaille)
+    .add_property("author", &Modification::getAuteur)
     .def("apply", &Modification::effectuerModification)
     .def("update", &Modification::mettreAJour)
     .def("isAdd", &Modification::isAdd)
@@ -56,13 +57,13 @@ BOOST_PYTHON_MODULE(libZoneTransit)
 
   //Definit Ajout heritant de Modification
   class_<Ajout, bases<Modification>>("Addition")
-    .def(init<pos_t, size_t, const string&>())
-    .def(init<pos_t, const string&>())
+    .def(init<pos_t, size_t, const string&, const string&>())
+    .def(init<pos_t, const string&, const string&>())
     .def(init<const Ajout&>())
     .add_property("data", &Ajout::getData);
 
   class_<Suppression, bases<Modification>>("Removal")
-    .def(init<pos_t, size_t>())
+    .def(init<pos_t, size_t, const string&>())
     .def(init<const Suppression&>());
 
   class_<std::vector<ModificationPtr>>("Modifications")

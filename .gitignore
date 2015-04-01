@@ -3,6 +3,9 @@
 *~
 src/app/c++/build
 
+# Misc Dev tools configs
+.ycm_extra_conf.py
+
 # SASS compiled stylesheets
 src/static/css/*.css
 

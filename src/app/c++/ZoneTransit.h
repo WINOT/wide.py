@@ -6,7 +6,6 @@
  ****************************************************************************/
 
 #include <vector>
-#include <mutex>
 #include <boost/python/tuple.hpp>
 #include "PaquetModifications.h"
 #include "Fichier.h"
@@ -16,8 +15,6 @@
 #define ZONE_TRANSIT
 
 using std::vector;
-using std::mutex;
-using std::lock_guard;
 using std::string;
 
 using namespace types;
@@ -28,22 +25,23 @@ class ZoneTransit
     vector<PaquetModifications> _paquetModifications; //ce vecteur sert a la gestion interne d'ecriture et de mise a jour des modifications
     vector<ModificationPtr> _modifications; //ce vecteur sera retourne a l'application lorsqu'ecrireModifications est appele
     Fichier _fichier;
-    mutex _mutex;
 
   public:
     ZoneTransit() = default;
 
     ZoneTransit(const string& contenu) noexcept
       : _paquetModifications{}
+      , _modifications{}
       , _fichier{contenu}
-      , _mutex{}
-    {}
+    {
+      //// TODO Make reserve based on maximum modification constant
+      _paquetModifications.reserve(500);
+      _modifications.reserve(500);
+    }
 
     //ajoute la modification a la liste
     void add(const vector<ModificationPtr>& pm)
     {
-      lock_guard<mutex> lock{_mutex};
-
       _paquetModifications.push_back(PaquetModifications(pm));
 
       //On ajoute graduellement a ce vecteur pour amortir le cout d'un appel a ecrireModifications
@@ -52,8 +50,6 @@ class ZoneTransit
 
     void add(const ModificationPtr& m)
     {
-      lock_guard<mutex> lock{_mutex};
-
       _paquetModifications.push_back(PaquetModifications(vector<ModificationPtr>(1,m)));
 
       //On ajoute graduellement a ce vecteur pour amortir le cout d'un appel a ecrireModifications
@@ -63,8 +59,6 @@ class ZoneTransit
     //effectue les modifications
     boost::python::tuple ecrireModifications()
     {
-      lock_guard<mutex> lock{_mutex};
-
       //On effectue les modifications par "paquet" pour eviter que les modifications
       //d'un meme paquet se mettent a jour inutilement entre elles
       for(auto it = _paquetModifications.begin(); it != _paquetModifications.end(); ++it)

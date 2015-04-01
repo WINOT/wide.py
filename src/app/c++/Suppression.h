@@ -9,6 +9,7 @@
 
 #include "Fichier.h"
 #include "Types.h"
+#include "Modification.h"
 #include <algorithm>
 
 using namespace types;
@@ -19,8 +20,8 @@ class Suppression : public Modification
   public:
     Suppression() = default;
 
-    Suppression(pos_t position, size_t taille)
-      : Modification(position, taille)
+    Suppression(pos_t position, size_t taille, const string& auteur)
+      : Modification(position, taille, auteur)
     {}
 
     virtual void effectuerModification(Fichier& fichier) override

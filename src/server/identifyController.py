@@ -119,7 +119,6 @@ class IdentifyController(object):
     sess[SESSION_KEY] = None
     if username:
       cherrypy.request.login = None
-      self._app.removeUsername(username)
 
     raise cherrypy.HTTPRedirect(IdentifyController.LOGOUT_REDIRECT)
 

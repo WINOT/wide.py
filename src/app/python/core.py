@@ -1,13 +1,12 @@
 import sys
 import os
-from Queue import Queue
+import shutil
+from Queue import Queue, Empty as EmptyQueue
 from copy import deepcopy
 from threading import Thread
-from collections import namedtuple, deque
+from collections import namedtuple
 from datetime import datetime, timedelta
-
 from zipfile import ZipFile
-from pdb import set_trace as dbg
 from tempfile import NamedTemporaryFile
 
 from cide.app.python.utils.nodes import (get_existing_files,
@@ -24,7 +23,7 @@ from libZoneTransit import (TransitZone as EditBuffer,
 
 def task_time(microseconds):
   """
-  Function decorator to specify the worse execution time metadata 
+  Function decorator to specify the worse execution time metadata
   to a task under the 'time' attribute as a timedelta object
 
   @type microseconds: float
@@ -36,6 +35,7 @@ def task_time(microseconds):
     func.debugname = func.func_name
     return func
   return wrapper
+
 
 class Core(object):
   """
@@ -69,20 +69,26 @@ class Core(object):
 
     self._project_name = project_conf['name']
     self._project_base_path = project_conf['base_dir']
-    self._project_src_path = project_conf['code_dir'] # considered as root
+    self._project_src_path = project_conf['code_dir']  # considered as root
     self._project_backup_path = project_conf['backup_dir']
     self._project_exec_path = project_conf['exec_dir']
     self._project_tmp_path = project_conf['tmp_dir']
     self._logger = logger
 
     # Make sure directories exists
-    for project_dir in (self._project_base_path, 
+    for project_dir in (self._project_base_path,
                         self._project_src_path,
                         self._project_backup_path,
                         self._project_exec_path,
                         self._project_tmp_path):
       if not os.path.exists(project_dir):
         os.makedirs(project_dir)
+
+    for node in os.listdir(self._project_tmp_path):
+      if os.path.isfile(node):
+        os.unlink(node)
+      elif os.path.isdir(node):
+        shutil.rmtree(node)
 
     # Asociation filepath -> (zoneTransit, set(userlist))
     # Recreate structure from existing files on disk
@@ -98,7 +104,7 @@ class Core(object):
     first_strategy = StrategyCallEmpty(self._change_core_strategy)
     self._core_listeners_strategy = first_strategy
 
-    self.tasks = deque()
+    self.tasks = Queue()
     self._thread = CoreThread(self, core_conf)
 
   """
@@ -153,13 +159,13 @@ class Core(object):
   def _add_task(self, f, *args):
     """
     Add a task into the task list
-    
+
     @type f: function
 
     @param f: The task
     @param args: The arugments to be applied on f
     """
-    self.tasks.append(Core.Task(f, args))
+    self.tasks.put(Core.Task(f, args))
 
   def _create_file(self, content=""):
     """
@@ -206,7 +212,7 @@ class Core(object):
     self._add_task(self._task_get_file_content, path, caller)
     self._logger.info("get_file_content task added")
 
-  def register_user_to_file(self, user, path):
+  def open_file(self, user, path):
     """
     Register a user to a file in order to receive file modification
     notifications. When the file does not exists, it is created
@@ -217,8 +223,8 @@ class Core(object):
     @param user: The user name
     @param path: The path of the file to be registered to
     """
-    self._add_task(self._task_register_user_to_file, user, path)
-    self._logger.info("register_user_to_file task added")
+    self._add_task(self._task_open_file, user, path)
+    self._logger.info("open_file task added")
 
   def unregister_user_to_file(self, user, path):
     """
@@ -246,17 +252,19 @@ class Core(object):
     self._add_task(self._task_unregister_user_to_all_files, user)
     self._logger.info("unregister_user_to_all_files task added")
 
-  def file_edit(self, path, changes):
+  def file_edit(self, path, changes, caller):
     """
     Send changes, text added or text removed, to the file
 
     @type path: str
     @type changes: list [Change namedtuple]
+    @type caller: str
 
     @param path: The path of the file in the project tree
     @param changes: Changes to be applied on the file
+    @param caller: The author of the changes
     """
-    self._add_task(self._task_file_edit, path, changes)
+    self._add_task(self._task_file_edit, path, changes, caller)
     self._logger.info("File_edit task added")
 
   def create_archive(self, path, caller):
@@ -292,7 +300,6 @@ class Core(object):
     List of nodes is: list((str, bool)) [(<<Project node>>, <<Node is directory flag>>)]
     Callback will be called with: nodes, caller
     """
-    self._logger.info("get_project_nodes task called for {0}".format(caller))
     sorted_nodes = self._impl_get_project_nodes()
     self._notify_event(lambda l: l.notify_get_project_nodes(sorted_nodes, caller))
 
@@ -309,12 +316,11 @@ class Core(object):
 
     Callback will be called with: tuple (<<File name>>, <<File Content>>, <<File Version>>)
     """
-    self._logger.info("get_file_content task called for {0}, {1}".format(caller, path))
     result = self._impl_get_file_content(path)
     self._notify_event(lambda l: l.notify_get_file_content(result, caller))
 
   @task_time(microseconds=1)
-  def _task_register_user_to_file(self, user, path):
+  def _task_open_file(self, user, path):
     """
     Task to register a user to a file in order to receive file modification
     notifications. When the file does not exists, it is created
@@ -325,13 +331,16 @@ class Core(object):
     @param user: The user name
     @param path: The path of the file to be registered to
     """
-    self._logger.info("register_user_to_file task called for {0}, {1}".format(user, path))
     if path not in self._project_files:
       # Create file when does not exists
       self._project_files[path] = self._create_file()
 
     # Register user
     self._project_files[path].users.add(user)
+
+    # Return content
+    result = self._impl_get_file_content(path)
+    self._notify_event(lambda l: l.notify_get_file_content(result, user))
 
   @task_time(microseconds=1)
   def _task_unregister_user_to_file(self, user, path):
@@ -345,7 +354,6 @@ class Core(object):
     @param user: The user name
     @param path: The path of the file to be unregistrered from
     """
-    self._logger.info("unregister_user_to_file task called for {0}, {1}".format(user, path))
     if path in self._project_files:
       self._project_files[path].users.discard(user)
 
@@ -359,26 +367,27 @@ class Core(object):
 
     @param user: The user name
     """
-    self._logger.info("unregister_user_to_all_files task called for {0}".format(user))
-    for f in self._project_files:
+    for f in self._project_files.itervalues():
       f.users.discard(user)
 
   @task_time(microseconds=1)
-  def _task_file_edit(self, path, changes):
+  def _task_file_edit(self, path, changes, user):
     """
     Task to add change to be applied to a file
 
     @type path: str
     @type changes: [namedtuple Change]
+    @type user: str
 
     @param path: The path of the file in the project tree
     @param changes: Changes to be applied on the file
+    @param user: User who sent the changes
     """
-    self._logger.info("file_edit task called for {0}".format(path))
+    author = user.encode("utf-8")
     if path in self._project_files:
       bundle = Modifications()
-      bundle.extend([(EditAdd(c.pos, c.data.encode("utf-8")) if c.is_add
-                      else EditRemove(c.pos, c.data)) for c in changes])
+      bundle.extend([(EditAdd(c.pos, c.data.encode("utf-8"), author) if c.is_add
+                      else EditRemove(c.pos, c.data, author)) for c in changes])
       self._project_files[path].file.add(bundle)
 
   @task_time(microseconds=1)
@@ -387,7 +396,6 @@ class Core(object):
     Periodic task to apply pending modifications on all file from project.
     It also sends notifications uppon change application.
     """
-    self._logger.info("check_apply_notify task called")
     for (filepath, element) in self._project_files.iteritems():
       if not element.file.isEmpty():
         self._inner_task_apply_changes(filepath)
@@ -401,13 +409,11 @@ class Core(object):
 
     @param path: The path of the file on which modifications will be applied
     """
-    self._logger.info("apply_changes task called for {0}".format(path))
     try:
       if path in self._project_files:
         version, changes = self._project_files[path].file.writeModifications()
         users_registered = deepcopy(self._project_files[path].users)
-        self._logger.info("_task_apply_changes call notify")
-        
+
         # Notify registered users
         self._notify_event(
           lambda l: l.notify_file_edit(path,
@@ -416,6 +422,7 @@ class Core(object):
                                        users_registered))
     except:
       e = sys.exc_info()
+      # XXX Remove after correction! C++ Should handle this!
       self._logger.exception("EXCEPTION RAISED {0}\n{1}\n{2}".format(e[0], e[1], e[2]))
 
   @task_time(microseconds=1)
@@ -431,16 +438,14 @@ class Core(object):
     @param caller: The user name
     @param response: Synchrone helper on which response needs to be written
     """
-    self._logger.info("create_archive task called for {0}, {1}".format(caller, path))
-
     archive_name = "{0}-{1}.zip".format(self.get_project_name(), caller)
     archive_path = os.path.join(self._project_tmp_path, archive_name)
 
     tempfile_prefix = "{0}-tmp".format(caller)
     archive_root_dir = "/{0}".format(path.split("/")[-1] or self.get_project_name())
 
-    archive_nodes = (node 
-                     for (node,is_dir) in self._impl_get_project_nodes() 
+    archive_nodes = (node
+                     for (node, is_dir) in self._impl_get_project_nodes()
                      if not is_dir and node.startswith(path))
 
     with ZipFile(archive_path, "w") as zf:
@@ -449,17 +454,17 @@ class Core(object):
           # Not reading from disk to get the lastest version
           _, content, _ = self._impl_get_file_content(filenode)
           ntf.write(content)
-          ntf.flush() # Make sure text gets writen
+          ntf.flush()  # Make sure text gets writen
 
           # Creates file into any needed parent directories
           zf.write(ntf.name, archive_root_dir + filenode)
 
-    # Export file 
+    # Export file
     response.put(archive_path)
 
   """
   Implementation of tasks without communication overhead.
-  This allows to reuse blocks of code 
+  This allows to reuse blocks of code
   """
 
   def _impl_get_project_nodes(self):
@@ -550,16 +555,16 @@ class CoreThread(Thread):
     auxiliary_time = conf["buffer_auxiliary"] / 100.0 * cycle_time
 
     self._cycle_time = timedelta(microseconds=cycle_time)
-    self._time_buffer_critical = timedelta(microseconds=critical_time) 
-    self._time_buffer_secondary = timedelta(microseconds=secondary_time) 
-    self._time_buffer_auxiliary = timedelta(microseconds=auxiliary_time) 
+    self._time_buffer_critical = timedelta(microseconds=critical_time)
+    self._time_buffer_secondary = timedelta(microseconds=secondary_time)
+    self._time_buffer_auxiliary = timedelta(microseconds=auxiliary_time)
 
   def stop(self):
     self._stop_asked = True
 
   def run(self):
     none_critical_time_buffer = self._time_buffer_secondary+self._time_buffer_auxiliary
-    
+
     # Define the ending point in time of the cycle
     # Tasks will be executed in the following order : auxiliary, secondary, critical
     # Therefore, end time points are defined corresponding to this order
@@ -569,24 +574,27 @@ class CoreThread(Thread):
     while not self._stop_asked:
 
       # None critical tasks
-      # Execute loop until the time buffer exceeds 
+      # Execute loop until the time buffer exceeds
       while datetime.now() < time_end_none_critical:
         try:
-          task = self._tasks.popleft()
+          # Blocking until timeout or an available task allows lower CPU intensive work
+          # Without blocking, CPU usage raises a lot and reduce CPU time for incomming requests
+          available_block_time = time_end_none_critical - datetime.now()
+          task = self._tasks.get(block=True, timeout=available_block_time.total_seconds())
 
           # Execute only if the task will not exceed the time buffer
           # Suppose that task were decorated by task_time function decorator
           if datetime.now() + task.f.time < time_end_none_critical:
             task.f(*task.args)
           else:
-            # Since there is no time left, replace task as first element
-            # and proceed to other category of tasks
-            diff = datetime.now() + task.f.time
-            self._tasks.appendleft(task)
+            # Since there is not enough time left, replace task back in queue
+            # and proceed to other category of tasks.
+            # Since order in task list is irrelevant, putting task at the end does not matter
+            self._tasks.put(task)
             break
 
         # There were no tasks available
-        except IndexError:
+        except EmptyQueue:
           pass
 
       # Critical tasks

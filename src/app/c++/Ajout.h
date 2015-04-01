@@ -9,6 +9,7 @@
 
 #include "Fichier.h"
 #include "Types.h"
+#include "Modification.h"
 
 using namespace types;
 
@@ -20,13 +21,13 @@ class Ajout : public Modification
   public:
     Ajout() = default;
 
-    Ajout(pos_t position, size_t taille, const string& data)
-      : Modification(position, taille)
+    Ajout(pos_t position, size_t taille, const string& data, const string& auteur)
+      : Modification(position, taille, auteur)
       , _data{data}
     {}
 
-    Ajout(pos_t position, const string& data)
-      : Modification(position, data.size())
+    Ajout(pos_t position, const string& data, const string& auteur)
+      : Modification(position, data.size(), auteur)
       , _data{data}
     {}
 

@@ -1,0 +1,8 @@
+-rw-r--r--  1 maym2104 domain^users  1935736099 mar 23 19:44 Benchmarks-Arnold.zip
+-rw-r--r--  1 maym2104 domain^users         118 mar 23 19:27 Benchmarks-Donald.zip
+-rw-r--r--  1 maym2104 domain^users         280 mar 23 19:31 Benchmarks-Eugene.zip
+-rw-r--r--  1 maym2104 domain^users  1207123413 mar 23 19:36 Benchmarks-Ginette.zip
+-rw-r--r--  1 maym2104 domain^users         118 mar 23 19:19 Benchmarks-Marc.zip
+-rw-r--r--  1 maym2104 domain^users        5304 mar 27 09:39 benchmarks.py
+-rw-r--r--  1 maym2104 domain^users 90792760011 mar 27 18:39 log_benchmarks
+

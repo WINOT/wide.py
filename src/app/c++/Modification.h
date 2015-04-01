@@ -17,19 +17,22 @@ class Modification
   private:
     pos_t _position;
     size_t _taille;
+    string _auteur;
     //uint _versionID;
 
   public:
     Modification() = default;
 
-    Modification(pos_t position, size_t taille)
+    Modification(pos_t position, size_t taille, const string& auteur)
       : _position{position}
       , _taille{taille}
+      , _auteur{auteur}
     {}
 
     virtual ~Modification() = default;
     virtual pos_t getPosition() const noexcept {return _position;}
     virtual size_t getTaille() const noexcept {return _taille;}
+    virtual string getAuteur() const noexcept {return _auteur;}
     virtual void effectuerModification(Fichier& fichier) = 0;
 
     virtual void mettreAJour(const Modification& m1)
