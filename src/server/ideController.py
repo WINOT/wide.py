@@ -49,11 +49,26 @@ def set_author_bool_in_dict(serialized_changes, user):
   for sc in serialized_changes:
     sc['author'] = (sc['author'] == user)
 
+
+def create_exec_started_dict(filename, args):
+  return {'file' : filename, 'args' : args}
+
+
 def create_exec_output_dict(output):
   return {'output' : output}
 
+
 def create_exec_ended_dict(exitcode):
   return {'exitcode' : exitcode}
+
+
+def create_exec_in_progress_error_dict(filename, args):
+  return {'file' : filename, 'args' : args}
+
+
+def create_exec_not_in_progress_error_dict():
+  return {}
+
 
 class IDEController(object):
   """
@@ -88,8 +103,13 @@ class IDEController(object):
     self.notify_file_edit = self._save_callback
     self.notify_get_project_nodes = self._tree_callback
     self.notify_get_file_content = self._dump_callback
+    self.notify_program_started = self._exec_started_callback
     self.notify_program_output = self._exec_output_callback
     self.notify_program_ended = self._exec_ended_callback
+    # Error callbacks
+    self.notify_program_no_running_error = self._exec_no_process_error_callback
+    self.notify_program_running_error = self._exec_in_progress_error_callback
+
     # Register controller to events
     self._app.register_application_listener(self)
     self.debug_bundle_id = 0
@@ -617,6 +637,26 @@ class IDEController(object):
                                            create_file_dump_dict(filename, version, content)))
     self._send_on_ws(caller, to_send)
 
+  def _exec_started_callback(self, filename, args, caller):
+    """
+    Sends the message that execution started successfully
+    This is the call back from /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execstarted',
+        'data': {
+                  'file':    '<<The file that was executed>>',
+                  'args':    '<<The arguments provided to execution>>'
+                }
+      }
+    """
+    self._logger.info("ExecStarted-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execstarted',
+                                           create_exec_started_dict(filename, args)))
+    self._send_on_ws(caller, to_send)
+
   def _exec_output_callback(self, output, caller):
     """
     Sends the output of a user program
@@ -630,7 +670,7 @@ class IDEController(object):
                 }
       }
     """
-    self._logger.info("ExecOutput-callback for {0} with {1}".format(caller, output))
+    self._logger.info("ExecOutput-callback for {0}".format(caller))
 
     to_send = simplejson.dumps(wrap_opCode('execoutput',
                                            create_exec_output_dict(output)))
@@ -649,13 +689,49 @@ class IDEController(object):
                 }
       }
     """
-    self._logger.info("ExecEnded-callback for {0} with {1}".format(caller, exitcode))
+    self._logger.info("ExecEnded-callback for {0}".format(caller))
 
     to_send = simplejson.dumps(wrap_opCode('execended',
                                            create_exec_ended_dict(exitcode)))
-    
     self._send_on_ws(caller, to_send)
 
+  def _exec_in_progress_error_callback(self, running_file, running_args, caller):
+    """
+    Error indication that user already possesses a process
+    This is the call back of a program creation attempt by /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execerrorinprogress',
+        'data': {
+                  'file':    '<<The file of the running process>>',
+                  'args':    '<<The arguments of the running process>>'
+                }
+      }
+    """
+    self._logger.info("ExecErrorInProgress-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execerrorinprogress',
+                                           create_exec_in_progress_error_dict(running_file,
+                                                                              running_args)))
+    self._send_on_ws(caller, to_send)
+
+  def _exec_no_process_error_callback(self, caller):
+    """
+    Error indication that user does not possess a process
+    This is the call back of a program interraction attempt by /ide/execinput and /ide/execkill
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execerrornotinprogress',
+        'data': {}
+      }
+    """
+    self._logger.info("ExecErrorNotInProgress-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execerrornotinprogress',
+                                           create_exec_not_in_progress_error_dict()))
+    self._send_on_ws(caller, to_send)
 
   """
   Helper methods with websocket

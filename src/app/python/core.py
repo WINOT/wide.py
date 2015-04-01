@@ -2,6 +2,7 @@ import sys
 import os
 import shutil
 import subprocess
+from select import select
 from Queue import Queue, Empty as EmptyQueue
 from copy import deepcopy
 from threading import Thread
@@ -55,7 +56,7 @@ class Core(object):
   Task = namedtuple('Task', ['f', 'args'])
 
   # Execution wrapper to hold the pipes
-  Exec = namedtuple('Exec', ['process', 'args'])
+  Exec = namedtuple('Exec', ['process', 'file', 'args'])
 
   def __init__(self, project_conf, core_conf, logger):
     """
@@ -505,14 +506,17 @@ class Core(object):
                                         )
 
         # Save execution
-        self._project_execs[caller] = Core.Exec(exec_process, args)
-
-        # Notify
-        # self._notify_event(lambda l: l.notify_launch_program("started", caller))
+        self._project_execs[caller] = Core.Exec(exec_process, mainpath, args)
+        # Notify started
+        self._notify_event(lambda l: l.notify_program_started(mainpath, args, caller))
       else:
         pass #notify error 'File not found'
     else:
-      pass # notify exec in progress
+      # Notify exec in progress
+      user_exec = self._project_execs[caller]
+      self._notify_event(lambda l: l.notify_program_running_error(user_exec.file,
+                                                                  user_exec.args,
+                                                                  caller))
 
   @task_time(microseconds=1)
   def _task_program_input(self, data, caller):
@@ -530,7 +534,8 @@ class Core(object):
       user_execution.process.stdin.write(data)
       user_execution.process.stdin.flush()
     else:
-      pass # notify 'no running program for user'
+      # Notify no process in progress
+      self._notify_event(lambda l: l.notify_program_no_running_error(caller))
 
   @task_time(microseconds=1)
   def _task_program_kill(self, caller):
@@ -546,6 +551,9 @@ class Core(object):
       user_execution.process.stdin.close()
       user_execution.process.terminate()
       del self._project_execs[caller]
+    else:
+      # Notify no process in progress
+      self._notify_event(lambda l: l.notify_program_no_running_error(caller))
 
   """
   Periodic tasks call section
@@ -626,7 +634,17 @@ class Core(object):
 
   @task_time(microseconds=1)
   def task_check_program_output_notify(self):
-    from select import select
+    """
+    Task to create an archive of the files under a project directory
+
+    @type path: str
+    @type caller: str
+    @type response: Queue.Queue
+
+    @param path: The path of the directory to compress
+    @param caller: The user name
+    @param response: Synchrone helper on which response needs to be written
+    """
     processes_stdout = (execution.process.stdout for execution in self._project_execs.itervalues())
     ready, _, _, = select(processes_stdout, [], [], 0)
 
@@ -679,7 +697,12 @@ class Core(object):
    - notify_file_edit(filename, changes, version, users)
    - notify_get_project_nodes(nodes_list)
    - notify_get_file_content(result, caller)
+   - notify_program_started(file, args, caller)
    - notify_program_output(output, caller)
+   - notify_program_ended(exitcode, caller)
+
+   - notify_program_running_error(running_file, running_args, caller)
+   - notify_program_no_running_error(caller)
   """
 
   def register_application_listener(self, listener):
