@@ -50,6 +50,29 @@ def set_author_bool_in_dict(serialized_changes, user):
     sc['is_from_you'] = (sc['author'] == user)
 
 
+def create_exec_started_dict(filename, args):
+  return {'file' : filename, 'args' : args}
+
+
+def create_exec_output_dict(output):
+  return {'output' : output}
+
+
+def create_exec_ended_dict(exitcode):
+  return {'exitcode' : exitcode}
+
+
+def create_exec_in_progress_error_dict(filename, args):
+  return {'file' : filename, 'args' : args}
+
+
+def create_exec_not_in_progress_error_dict():
+  return {}
+
+def create_file_error_dict(filename):
+  return {'file' : filename}
+
+
 class IDEController(object):
   """
   Controller of the IDE/Editing part
@@ -83,6 +106,13 @@ class IDEController(object):
     self.notify_file_edit = self._save_callback
     self.notify_get_project_nodes = self._tree_callback
     self.notify_get_file_content = self._dump_callback
+    self.notify_program_started = self._exec_started_callback
+    self.notify_program_output = self._exec_output_callback
+    self.notify_program_ended = self._exec_ended_callback
+    # Error callbacks
+    self.notify_program_unknow_file_error = self._exec_invalid_file_error_callback
+    self.notify_program_no_running_error = self._exec_no_process_error_callback
+    self.notify_program_running_error = self._exec_in_progress_error_callback
 
     # Register controller to events
     self._app.register_application_listener(self)
@@ -371,6 +401,18 @@ class IDEController(object):
   @cherrypy.expose
   @require_identify()
   def export(self, path, **kw):
+    """
+    Download the zip archive with the file under the specified project directory
+    Method : GET
+    (Path : /ide/export)
+    
+    Input must be JSON of the following format:
+      {
+        'path':    '<<The project directory from where to compress>>'
+      }
+
+    Output in response will be a zip file
+    """
     self._logger.debug("Export by {0} ({1}:{2}) path: {3}".format(cherrypy.session['username'],
                                                                   request.remote.ip,
                                                                   request.remote.port,
@@ -396,6 +438,95 @@ class IDEController(object):
     request.hooks.attach('on_end_request', lambda: os.unlink(request.archive_path))
     # Return archive
     return static.serve_download(archive_path)
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  @cherrypy.tools.json_in()
+  @require_identify()
+  def execstart(self):
+    """
+    Execute the program with the specified arguments and file entry point
+    Method : PUT
+    (Path : /ide/execstart)
+    
+    Input must be JSON of the following format:
+      {
+        'file':    '<<Filepath of entry point of the program>>',
+        'args':    '<<Arguments to send to the program>>'
+      }
+    """
+    self._logger.debug("Execstart by {0} ({1}:{2}) JSON: {3}".format(cherrypy.session['username'],
+                                                                     request.remote.ip,
+                                                                     request.remote.port,
+                                                                     request.json))
+
+    username = cherrypy.session['username']
+    filename = request.json['file']
+    args = request.json['args']
+    self._logger.info("Execstart on file {3} with '{4}' requested by {0} ({1}:{2})".format(username,
+                                                                                           request.remote.ip,
+                                                                                           request.remote.port,
+                                                                                           filename,
+                                                                                           args))
+    if self.is_valid_path(filename):
+      self._app.program_launch(filename, args, username)
+    else:
+      raise HTTPError(400, "Invalid path")
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  @cherrypy.tools.json_in()
+  @require_identify()
+  def execinput(self):
+    """
+    Send input text to a running program
+    Method : PUT
+    (Path : /ide/execinput)
+    
+    Input must be JSON of the following format:
+      {
+        'data':    '<<Data input to send to the program>>'
+      }
+    """
+    self._logger.debug("Execinput by {0} ({1}:{2}) JSON: {3}".format(cherrypy.session['username'],
+                                                                     request.remote.ip,
+                                                                     request.remote.port,
+                                                                     request.json))
+
+    username = cherrypy.session['username']
+    data = request.json['data']
+    self._logger.info("Execinput with data {3} requested by {0} ({1}:{2})".format(username,
+                                                                                  request.remote.ip,
+                                                                                  request.remote.port,
+                                                                                  data))
+
+    self._app.program_input(data, username)
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  @cherrypy.tools.json_in()
+  @require_identify()
+  def execkill(self):
+    """
+    Terminate a running program
+    Method : PUT
+    (Path : /ide/execkill)
+    
+    Input must be JSON of the following format:
+      {
+      }
+    """
+    self._logger.debug("Execkill by {0} ({1}:{2})".format(cherrypy.session['username'],
+                                                                     request.remote.ip,
+                                                                     request.remote.port,
+                                                                     request.json))
+
+    username = cherrypy.session['username']
+    self._logger.info("Execkill requested by {0} ({1}:{2})".format(username,
+                                                                   request.remote.ip,
+                                                                   request.remote.port))
+
+    self._app.program_kill(username)
 
   @cherrypy.expose
   @require_identify()
@@ -486,23 +617,7 @@ class IDEController(object):
     self._logger.info("Tree-callback for {0}".format(caller))
 
     to_send = simplejson.dumps(wrap_opCode('tree', create_tree_nodes_dict(nodes)))
-
-    ws = IDEWebSocket.IDEClients.get(caller)
-    if ws:
-      try:
-        ws.send(to_send)
-        self._logger.info("{0} ({1}:{2}) WS transfer succeded".format(caller,
-                                                                      ws.peer_address[0],
-                                                                      ws.peer_address[1]))
-      except:
-        self._logger.error("{0} ({1}:{2}) WS transfer failed".format(caller,
-                                                                     ws.peer_address[0],
-                                                                     ws.peer_address[1]))
-        # Close websocket
-        ws.close(reason='Failed to send tree')
-
-    else:
-      self._logger.error("{0} has no WS in server".format(caller))
+    self._send_on_ws(caller, to_send)
 
   def _dump_callback(self, result, caller):
     """
@@ -519,29 +634,149 @@ class IDEController(object):
                 }
       }
     """
-    self._logger.info("Tree-callback for {0}".format(caller))
+    self._logger.info("Dump-callback for {0}".format(caller))
     filename, content, version = result  # TODO Check if result is None
 
     to_send = simplejson.dumps(wrap_opCode('dump',
                                            create_file_dump_dict(filename, version, content)))
+    self._send_on_ws(caller, to_send)
 
-    ws = IDEWebSocket.IDEClients.get(caller)
+  def _exec_started_callback(self, filename, args, caller):
+    """
+    Sends the message that execution started successfully
+    This is the call back from /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execstarted',
+        'data': {
+                  'file':    '<<The file that was executed>>',
+                  'args':    '<<The arguments provided to execution>>'
+                }
+      }
+    """
+    self._logger.info("ExecStarted-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execstarted',
+                                           create_exec_started_dict(filename, args)))
+    self._send_on_ws(caller, to_send)
+
+  def _exec_output_callback(self, output, caller):
+    """
+    Sends the output of a user program
+    This is the call back from a prgram create by /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execoutput',
+        'data': {
+                  'output':    '<<Output from the running program>>'
+                }
+      }
+    """
+    self._logger.info("ExecOutput-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execoutput',
+                                           create_exec_output_dict(output)))
+    self._send_on_ws(caller, to_send)
+
+  def _exec_ended_callback(self, exitcode, caller):
+    """
+    Sends the exitcode of a user program
+    This is the call back of the end of a program create by /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execended',
+        'data': {
+                  'exitcode':    '<<Exit code from the ended program>>'
+                }
+      }
+    """
+    self._logger.info("ExecEnded-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execended',
+                                           create_exec_ended_dict(exitcode)))
+    self._send_on_ws(caller, to_send)
+
+  def _exec_invalid_file_error_callback(filename, caller):
+    """
+    Error indication that executed file is unknown
+    This is the call back of a program creation attempt by /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execerrorinvalidfile',
+        'data': {
+                  'file':    '<<Attempted executed file>>'
+                }
+      }
+    """
+    self._logger.info("ExecErrorInvalidFile-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execerrorinvalidfile',
+                                           create_file_error_dict(filename)))
+    self._send_on_ws(caller, to_send)
+
+  def _exec_in_progress_error_callback(self, running_file, running_args, caller):
+    """
+    Error indication that user already possesses a process
+    This is the call back of a program creation attempt by /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execerrorinprogress',
+        'data': {
+                  'file':    '<<The file of the running process>>',
+                  'args':    '<<The arguments of the running process>>'
+                }
+      }
+    """
+    self._logger.info("ExecErrorInProgress-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execerrorinprogress',
+                                           create_exec_in_progress_error_dict(running_file,
+                                                                              running_args)))
+    self._send_on_ws(caller, to_send)
+
+  def _exec_no_process_error_callback(self, caller):
+    """
+    Error indication that user does not possess a process
+    This is the call back of a program interraction attempt by /ide/execinput and /ide/execkill
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execerrornotinprogress',
+        'data': {}
+      }
+    """
+    self._logger.info("ExecErrorNotInProgress-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execerrornotinprogress',
+                                           create_exec_not_in_progress_error_dict()))
+    self._send_on_ws(caller, to_send)
+
+  """
+  Helper methods with websocket
+  """
+
+  def _send_on_ws(self, user, json_object):
+    ws = IDEWebSocket.IDEClients.get(user)
     if ws:
       try:
-        ws.send(to_send)
-        self._logger.info("{0} ({1}:{2}) WS transfer succeded".format(caller,
+        ws.send(json_object)
+        self._logger.info("{0} ({1}:{2}) WS transfer succeded".format(user,
                                                                       ws.peer_address[0],
                                                                       ws.peer_address[1]))
       except:
-        self._logger.error("{0} ({1}:{2}) WS transfer failed".format(caller,
+        self._logger.error("{0} ({1}:{2}) WS transfer failed".format(user,
                                                                      ws.peer_address[0],
                                                                      ws.peer_address[1]))
         # Close websocket
-        ws.close(reason='Failed to send dump')
+        ws.close(reason='Failed to send exec output')
 
     else:
-      self._logger.error("{0} has no WS in server".format(caller))
-
+      self._logger.error("{0} has no WS in server".format(user))
 
 class IDEWebSocket(WebSocket):
   """

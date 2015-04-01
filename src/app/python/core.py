@@ -1,6 +1,8 @@
 import sys
 import os
 import shutil
+import subprocess
+from select import select
 from Queue import Queue, Empty as EmptyQueue
 from copy import deepcopy
 from threading import Thread
@@ -26,7 +28,7 @@ def task_time(microseconds):
   Function decorator to specify the worse execution time metadata
   to a task under the 'time' attribute as a timedelta object
 
-  @type microseconds: float
+  @type microseconds: int
 
   @param microseconds: The execution time found by worse case scenarios benchmarks
   """
@@ -35,7 +37,6 @@ def task_time(microseconds):
     func.debugname = func.func_name
     return func
   return wrapper
-
 
 class Core(object):
   """
@@ -53,6 +54,9 @@ class Core(object):
   # Task wrapper to hold the arguments to be applied on a delayed
   # executing function
   Task = namedtuple('Task', ['f', 'args'])
+
+  # Execution wrapper to hold the pipes
+  Exec = namedtuple('Exec', ['process', 'file', 'args'])
 
   def __init__(self, project_conf, core_conf, logger):
     """
@@ -104,6 +108,10 @@ class Core(object):
     first_strategy = StrategyCallEmpty(self._change_core_strategy)
     self._core_listeners_strategy = first_strategy
 
+    # Client executions
+    # Association user -> Exec(pipestdin, pipestdout)
+    self._project_execs = dict()
+
     self.tasks = Queue()
     self._thread = CoreThread(self, core_conf)
 
@@ -122,7 +130,11 @@ class Core(object):
     """
     Stop the application
     """
+    # Stop handling new tasks
     self._thread.stop()
+    # Stop existing executions
+    for execution in self._project_execs.itervalues():
+      execution.process.kill() # brutal
 
   def get_project_name(self):
     """
@@ -285,10 +297,50 @@ class Core(object):
     self._logger.info("Create archive task added")
     return synchrone_future
 
+  def program_launch(self, mainpath, args, caller):
+    """
+    Launch the program with the specified arguments
+
+    @type mainpath: str
+    @type args: str
+    @type caller: str
+
+    @param mainpath: The project filepath to execute
+    @param args: Data to send to the executed file
+    @param caller: The user name
+    """
+    self._add_task(self._task_program_launch, mainpath, args, caller)
+    self._logger.info("Program_launch task added")
+
+  def program_input(self, data, caller):
+    """
+    Send input to the running program of the caller
+
+    @type data: str
+    @type caller: str
+
+    @param data: Data to send to the executing program
+    @param caller: The user name
+    """
+    self._add_task(self._task_program_input, data, caller)
+    self._logger.info("Program_input task added")
+
+  def program_kill(self, caller):
+    """
+    Ends the running program of the caller
+
+    @type caller: str
+
+    @param caller: The user name
+    """
+    self._add_task(self._task_program_kill, caller)
+    self._logger.info("Program_kill task added")
+
   """
   Tasks call section
   Those are queued to be executed by the CoreThread
   """
+
   @task_time(microseconds=1)
   def _task_get_project_nodes(self, caller):
     """
@@ -391,6 +443,125 @@ class Core(object):
       self._project_files[path].file.add(bundle)
 
   @task_time(microseconds=1)
+  def _task_create_archive(self, path, caller, response):
+    """
+    Task to create an archive of the files under a project directory
+
+    @type path: str
+    @type caller: str
+    @type response: Queue.Queue
+
+    @param path: The path of the directory to compress
+    @param caller: The user name
+    @param response: Synchrone helper on which response needs to be written
+    """
+    archive_name = "{0}-{1}.zip".format(self.get_project_name(), caller)
+    archive_path = os.path.join(self._project_tmp_path, archive_name)
+
+    tempfile_prefix = "{0}-tmp".format(caller)
+    archive_root_dir = "/{0}".format(path.split("/")[-1] or self.get_project_name())
+
+    archive_nodes = (node 
+                     for (node,is_dir) in self._impl_get_project_nodes() 
+                     if not is_dir and node.startswith(path))
+
+    with ZipFile(archive_path, "w") as zf:
+      for filenode in archive_nodes:
+        with NamedTemporaryFile(prefix=tempfile_prefix, dir=self._project_tmp_path) as ntf:
+          # Not reading from disk to get the lastest version
+          _, content, _ = self._impl_get_file_content(filenode)
+          ntf.write(content)
+          ntf.flush() # Make sure text gets writen
+
+          # Creates file into any needed parent directories
+          zf.write(ntf.name, archive_root_dir + filenode)
+
+    # Export file 
+    response.put(archive_path)
+
+  @task_time(microseconds=1)
+  def _task_program_launch(self, mainpath, args, caller):
+    """
+    Task that will add a process with pipes input, output and error.
+
+    @type mainpath: str
+    @type args: list
+    @type caller: str
+
+    @param mainpath: The project filepath to execute
+    @param args: Array of strings to send to executed file
+    @param caller: The user name
+    """
+    if caller not in self._project_execs:
+      if mainpath in self._project_files:
+        # The -u switch forces subprocess to be unbuffered
+        # It is better than subprocess.bufsize parameter
+        # since it does not seems to always work
+        cmd = ['python', '-u', self._project_src_path+mainpath] + args.split()
+        exec_process = subprocess.Popen(args=cmd,
+                                        stdin=subprocess.PIPE,
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT,
+                                        env=dict(), # For security purposes
+                                        )
+
+        # Save execution
+        self._project_execs[caller] = Core.Exec(exec_process, mainpath, args)
+        # Notify started
+        self._notify_event(lambda l: l.notify_program_started(mainpath, args, caller))
+      else:
+        # Notify file error
+        self._notify_event(lambda l: l.notify_program_unknow_file_error(mainpath, caller))
+    else:
+      # Notify exec in progress
+      user_exec = self._project_execs[caller]
+      self._notify_event(lambda l: l.notify_program_running_error(user_exec.file,
+                                                                  user_exec.args,
+                                                                  caller))
+
+  @task_time(microseconds=1)
+  def _task_program_input(self, data, caller):
+    """
+    Task that will add input into the stdin pipe of the executing program
+
+    @type data: str
+    @type caller: str
+
+    @param data: The input data to send to program
+    @param caller: The user name
+    """
+    if caller in self._project_execs:
+      user_execution = self._project_execs[caller]
+      user_execution.process.stdin.write(data)
+      user_execution.process.stdin.flush()
+    else:
+      # Notify no process in progress
+      self._notify_event(lambda l: l.notify_program_no_running_error(caller))
+
+  @task_time(microseconds=1)
+  def _task_program_kill(self, caller):
+    """
+    Task that will kill the execution of the caller
+
+    @type caller: str
+
+    @param caller: The user name
+    """
+    if caller in self._project_execs:
+      user_execution = self._project_execs[caller]
+      user_execution.process.stdin.close()
+      user_execution.process.terminate()
+      del self._project_execs[caller]
+    else:
+      # Notify no process in progress
+      self._notify_event(lambda l: l.notify_program_no_running_error(caller))
+
+  """
+  Periodic tasks call section
+  Those are call to be executed each cycle by the CoreThread
+  """
+
+  @task_time(microseconds=1)
   def task_check_apply_notify(self):
     """
     Periodic task to apply pending modifications on all file from project.
@@ -462,6 +633,44 @@ class Core(object):
     # Export file
     response.put(archive_path)
 
+  @task_time(microseconds=1)
+  def task_check_program_output_notify(self):
+    """
+    Task to create an archive of the files under a project directory
+
+    @type path: str
+    @type caller: str
+    @type response: Queue.Queue
+
+    @param path: The path of the directory to compress
+    @param caller: The user name
+    @param response: Synchrone helper on which response needs to be written
+    """
+    processes_stdout = (execution.process.stdout for execution in self._project_execs.itervalues())
+    ready, _, _, = select(processes_stdout, [], [], 0)
+
+    for (caller, execution) in self._project_execs.items():
+      if execution.process.stdout in ready:
+        if execution.process.poll() != None:
+          # Remove from list
+          del self._project_execs[caller]
+
+          exitcode = execution.process.poll()
+          last_data = os.read(execution.process.stdout.fileno(), 1024)
+
+          # Notify
+          if last_data:
+            self._notify_event(lambda l: l.notify_program_output(last_data, caller))
+            
+          # Notify process end
+          self._notify_event(lambda l: l.notify_program_ended(exitcode, caller))
+
+        else:
+          data = os.read(execution.process.stdout.fileno(), 1024)
+          if data != "":
+            # Notify
+            self._notify_event(lambda l: l.notify_program_output(data, caller))
+
   """
   Implementation of tasks without communication overhead.
   This allows to reuse blocks of code
@@ -488,7 +697,14 @@ class Core(object):
   The listener will need to implement the following functions :
    - notify_file_edit(filename, changes, version, users)
    - notify_get_project_nodes(nodes_list)
-   - notify_get_file_content(nodes_list)
+   - notify_get_file_content(result, caller)
+   - notify_program_started(file, args, caller)
+   - notify_program_output(output, caller)
+   - notify_program_ended(exitcode, caller)
+
+   - notify_program_unknow_file_error(filename, caller)
+   - notify_program_running_error(running_file, running_args, caller)
+   - notify_program_no_running_error(caller)
   """
 
   def register_application_listener(self, listener):
@@ -546,6 +762,7 @@ class CoreThread(Thread):
     Thread.__init__(self)
     # Alias for shorter name
     self._c_a_n = app.task_check_apply_notify
+    self._c_p_o_n = app.task_check_program_output_notify
     self._tasks = app.tasks
     self._stop_asked = False
 
@@ -603,6 +820,11 @@ class CoreThread(Thread):
         self._c_a_n()
       else:
         print "CoreThread WARNING :: Not enough time to call task_check_apply_notify"
+
+      if datetime.now() + self._c_p_o_n.time < time_end_critical:
+        self._c_p_o_n()
+      else:
+        print "CoreThread WARNING :: Not enough time to call task_check_program_output_notify"
 
       # Increment rather than affecting to preserve any
       # unused or  overused time from last cycle

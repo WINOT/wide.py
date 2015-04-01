@@ -16,7 +16,7 @@ function AppChat(displayId, userInputId, userSendBtnId) {
   // Bind events
   var obj = this; // For closure
   this._userInputNode.keyup(function (e) { if (e.which == 13)  obj._send(); });
-  this._userSendBtnNode.click(function(e){ obj._send(); })
+  this._userSendBtnNode.click(function(e){ obj._send(); });
 
   var receiveFn = function(opCode, jsonObj){
     // Check if opCode means new member to chat
@@ -46,18 +46,18 @@ AppChat.prototype.addUserMessage = function(text, name, time){
     $('<li>').attr("class", "chat-message-element clearfix").append(
       $('<div>').attr("class", "chat-message-header").append(
         $('<strong>').attr("class", "primary-font").append(
-          name
+          htmlEncode(name)
         )
       ).append(
         $('<small>').attr("class", "text-muted pull-right").append(
           $('<span>').attr("class", "glyphicon glyphicon-time")
         ).append(
-          time
+          htmlEncode(time)
         )
       )
     ).append(
       $('<div>').attr("class", "chat-message-body").append(
-        text
+        htmlEncode(text)
       )
     )
   );
@@ -73,16 +73,16 @@ AppChat.prototype.addProjectMemberMessage = function(text, name, time){
         $('<small>').attr("class", "text-muted").append(
           $('<span>').attr("class", "glyphicon glyphicon-time")
         ).append(
-          time
+          htmlEncode(time)
         )
       ).append(
         $('<strong>').attr("class", "primary-font pull-right").append(
-          name
+          htmlEncode(name)
         )
       )
     ).append(
       $('<div>').attr("class", "chat-message-body").append(
-        text
+        htmlEncode(text)
       )
     )
   );

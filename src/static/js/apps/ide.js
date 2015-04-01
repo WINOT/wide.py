@@ -16,8 +16,24 @@ function AppIDE(lastVersionZoneId, displayZoneId, pushInterval) {
   // Handle ways of sending and receiving data from/to server
   var onopen = function(){ obj._ideState.init(); };
   var onclose = function(){ /* For future usage */ };
-  var onreceive = function(opCode, jsonObj) { obj.handleReceive(opCode, jsonObj); };
+  var onreceive = function(opCode, jsonObj) {
+    // hack
+    if(opCode.startsWith("exec")){
+      obj.execConsole.handleReceive(opCode, jsonObj);
+    }
+    else {
+      obj.handleReceive(opCode, jsonObj);
+    }
+  };
   var requestHandler = new RequestHandler('ide', onreceive, onopen, onclose);
+
+  // Execution console
+  this.execConsole = new ProjectConsoleView(requestHandler,
+                                           "console-window",
+                                           "console-display",
+                                           "console-input",
+                                           "console-text-btn",
+                                           "console-close-btn");
 
   // States
   // Create all to avoid recreation
@@ -77,7 +93,18 @@ AppIDE.prototype.switchToEditFileState = function(targetFilepath, dumpObj, chang
 
 AppIDE.prototype.export = function(path){
   this._ideState._rqh.download('export', createExport(path));
-}
+};
+
+AppIDE.prototype.runCurrentFile = function(args){
+  var currentFile = this._ideState.getCurrentFile();
+  if(currentFile) {
+    this.execConsole.start(currentFile, args);
+  }
+  else {
+    var msg = "There is no file selected, unable to execute";
+    console.log("WARNING", msg);
+  }
+};
 
 
 /*  The initial state of the ide 
@@ -111,7 +138,7 @@ IdeInitState.prototype.handleReceive = function(opCode, jsonObj) {
   }
 };
 IdeInitState.prototype.handleInput = function(){};
-
+IdeInitState.prototype.getCurrentFile = function(){ return null; };
 
 
 /* There is no active page to edit */
@@ -132,7 +159,7 @@ IdeNoFileState.prototype.handleReceive = function(opCode, jsonObj) {
   console.log("WARNING", msg, jsonObj);
 };
 IdeNoFileState.prototype.handleInput = function(){};
-
+IdeNoFileState.prototype.getCurrentFile = function(){ return null; };
 
 
 /* User requested to change file */
@@ -189,7 +216,7 @@ IdeFileChangeState.prototype.handleReceive = function(opCode, jsonObj) {
   }
 };
 IdeFileChangeState.prototype.handleInput = function(){};
-
+IdeFileChangeState.prototype.getCurrentFile = function(){ return null; };
 
 
 /* There is an active page to edit */
@@ -376,7 +403,7 @@ IdeEditState.prototype._combineText = function(cursor_pos, remote_modifs) {
   }
   return [base, cursor_pos];
 };
-
+IdeEditState.prototype.getCurrentFile = function(){ return this._currentFile; };
 
 
 

@@ -31,8 +31,13 @@
             <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false"><span class="glyphicon glyphicon-cloud"></span> Project</a>
             <ul class="dropdown-menu" role="menu">
               <li class="divider"></li>
-              <li><a href="#" onclick="return menuProjectExport();"><span class="glyphicon glyphicon-cloud-download"></span> Export</a></li>
+              <li><a href="#" onclick="menuProjectExport(); return false;"><span class="glyphicon glyphicon-cloud-download"></span> Export</a></li>
             </ul>
+          </li>
+
+          <!-- Execution relative elements -->
+          <li>
+            <a href="#" data-toggle="modal" data-target="#exec-args-window"><span class="glyphicon glyphicon-play-circle"></span> Execute current file</a>
           </li>
         </ul>
 
@@ -117,6 +122,52 @@
       </div><!-- side sections and ide -->
     </div><!-- container-fluid -->
 
+    <!-- Execution console modal -->
+    <div id="console-window" class="console-modal">
+      <div class="console">
+        <div class="console-header">
+          <label>Modal Box</label>
+          <button id="console-close-btn" class="close">X</button>
+        </div>
+        <div class="console-body">
+          <ul id="console-display" class="console-display"></ul>
+        </div>
+        <div class="console-footer">
+          <div class="input-group">
+            <input id="console-input" type="text" class="form-control" placeholder="Type your program input here..."/>
+            <span class="input-group-btn">
+              <button id="console-text-btn" class="btn">Send</button>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Execution argument modal window -->
+    <div class="modal fade" id="exec-args-window" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+            <h4 class="modal-title">Execution arguments</h4>
+          </div>
+
+          <div class="modal-body">
+            <p>Send the following arguments to the execution : </p>
+            <form class="input-group-btn" action="javascript:menuProjectRun();">
+              <input id="exec-args-input" type="text" class="form-control" placeholder="Type your execution arguments here..."/>
+            </form>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+            <a onclick='menuProjectRun(); return false;' class="btn btn-success btn-ok">Run</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- JQuery -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
     <!-- JS -->
@@ -124,6 +175,7 @@
     <script src="static/js/apps/ide.js" type="text/javascript" charset="utf-8"></script>
     <script src="static/js/apps/chat.js" type="text/javascript" charset="utf-8"></script>
     <script src="static/js/modules/treeView.js" type="text/javascript" charset="utf-8"></script>
+    <script src="static/js/modules/consoleView.js" type="text/javascript" charset="utf-8"></script>
     <script src="static/js/modules/localChanges.js" type="text/javascript" charset="utf-8"></script>
     <script src="static/js/modules/lastVersionZone.js" type="text/javascript" charset="utf-8"></script>
     <script src="static/js/modules/displayZone.js" type="text/javascript" charset="utf-8"></script>
@@ -136,5 +188,14 @@
     <script src="static/js/libs/diff_match_patch.js" type="text/javascript" charset="utf-8"></script>
     <!-- Caret JQuery helper JS (https://github.com/accursoft/caret) -->
     <script src="static/js/libs/jquery.caret.js" type="text/javascript" charset="utf-8"></script>
+
+    <!-- Execution argument modal window ; Auto focus -->
+    <script>
+      $(document).ready(function(){
+        $('#exec-args-window').on('show.bs.modal', function(e) {
+          $('#exec-args-input').focus();
+        });
+      });
+    </script>
   </body>
 </html>

@@ -8,13 +8,49 @@ $side-section-background-color: #f5f5f5;
 $side-section-foreground-color: #fff;
 $side-section-border-radius: 5px;
 
+$console-outter-background-opacity: 0.8;
+$console-inner-background-opacity: 1;
+$console-width: 75%;
+$console-height: 50%;
 
-@mixin mixin-wordwrap () {
+@mixin mixin-wordwrap() {
   white-space: pre-wrap;
   white-space: -moz-pre-wrap; /* Firefox */    
   white-space: -pre-wrap;     /* Opera <7 */   
   white-space: -o-pre-wrap;   /* Opera 7 */    
   word-wrap: break-word;
+}
+
+@mixin mixin-opacity-transition($time) {
+  opacity:0;
+  -webkit-transition: opacity $time ease-in;
+  -moz-transition: opacity $time ease-in;
+  transition: opacity $time ease-in;
+}
+
+@mixin mixin-linear-gradient($start, $end) {
+  background: $start;
+  background: -moz-linear-gradient($start, $end);
+  background: -webkit-linear-gradient($start, $end);
+  background: -o-linear-gradient($start, $end);
+}
+
+@mixin mixin-border-radius($px) {
+  -webkit-border-radius: $px;
+  -moz-border-radius: $px;
+  border-radius: $px;
+}
+
+@mixin mixin-box-shadow($a, $b, $c, $d) {
+  -moz-box-shadow: $a $b $c $d;
+  -webkit-box-shadow: $a $b $c $d;
+  box-shadow: $a $b $c $d;
+}
+
+@mixin mixin-fill-height($h) {
+  height: $h;
+  min-height: $h;
+  max-height: $h;
 }
 
 /*##############################
@@ -25,8 +61,7 @@ $side-section-border-radius: 5px;
 
 #tree.full-size,  
 .chat-logbox.full-size {
-    min-height: 75%;
-    max-height: 75%;
+  @include mixin-fill-height(75%);
 }
 
 
@@ -58,6 +93,8 @@ $side-section-border-radius: 5px;
 .codeDisplay {
   border-style: solid;
   border-width: 1px;
+  /*padding: 0px;*/
+  /*outline: none;*/
   white-space: pre-wrap;
 }
 
@@ -181,6 +218,60 @@ $side-section-border-radius: 5px;
   > input {
     height:100%;
   }
+}
+
+
+/*###############################
+###                          ####
+####     Console classes     ####
+####                         ####
+#################################*/
+
+.console-modal {
+  position: fixed;
+  font-family: Arial, Helvetica, sans-serif;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: rgba(0,0,0,0.8);
+  z-index: 99999;
+  opacity:0;
+  pointer-events: none;
+  @include mixin-opacity-transition(400ms);
+}
+
+.console-modal:target {
+  opacity:1;
+  pointer-events: auto;
+}
+
+.console {
+  width: $console-width;
+  height: auto;
+  position: relative;
+  margin: 5% 10% 10% 10%;
+  padding: 5px;
+  @include mixin-linear-gradient(#fff, #999);
+
+  > .console-body {
+    overflow-y: scroll;
+    height: 75%;
+    margin: 10px 10px 10px 10px;
+    border: 2px solid black;
+
+    > ul.console-display {
+      list-style: none;
+      padding: 5px;
+
+      > li.output-element {
+        @include mixin-wordwrap();
+      }
+    }
+  }
+}
+
+.console::after {
+    content: "";
+    display: table;
+    clear: both;
 }
 
 
