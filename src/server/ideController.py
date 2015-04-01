@@ -69,6 +69,9 @@ def create_exec_in_progress_error_dict(filename, args):
 def create_exec_not_in_progress_error_dict():
   return {}
 
+def create_file_error_dict(filename):
+  return {'file' : filename}
+
 
 class IDEController(object):
   """
@@ -107,6 +110,7 @@ class IDEController(object):
     self.notify_program_output = self._exec_output_callback
     self.notify_program_ended = self._exec_ended_callback
     # Error callbacks
+    self.notify_program_unknow_file_error = self._exec_invalid_file_error_callback
     self.notify_program_no_running_error = self._exec_no_process_error_callback
     self.notify_program_running_error = self._exec_in_progress_error_callback
 
@@ -666,7 +670,7 @@ class IDEController(object):
       {
         'opCode': 'execoutput',
         'data': {
-                  'output':    '<<Output from the running prgram>>'
+                  'output':    '<<Output from the running program>>'
                 }
       }
     """
@@ -683,9 +687,9 @@ class IDEController(object):
 
     Output on the WS will be JSON of the following format:
       {
-        'opCode': 'execoutput',
+        'opCode': 'execended',
         'data': {
-                  'exitcode':    '<<Exit code from the ended prgram>>'
+                  'exitcode':    '<<Exit code from the ended program>>'
                 }
       }
     """
@@ -693,6 +697,25 @@ class IDEController(object):
 
     to_send = simplejson.dumps(wrap_opCode('execended',
                                            create_exec_ended_dict(exitcode)))
+    self._send_on_ws(caller, to_send)
+
+  def _exec_invalid_file_error_callback(filename, caller):
+    """
+    Error indication that executed file is unknown
+    This is the call back of a program creation attempt by /ide/execstart
+
+    Output on the WS will be JSON of the following format:
+      {
+        'opCode': 'execerrorinvalidfile',
+        'data': {
+                  'file':    '<<Attempted executed file>>'
+                }
+      }
+    """
+    self._logger.info("ExecErrorInvalidFile-callback for {0}".format(caller))
+
+    to_send = simplejson.dumps(wrap_opCode('execerrorinvalidfile',
+                                           create_file_error_dict(filename)))
     self._send_on_ws(caller, to_send)
 
   def _exec_in_progress_error_callback(self, running_file, running_args, caller):

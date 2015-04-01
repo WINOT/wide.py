@@ -510,7 +510,8 @@ class Core(object):
         # Notify started
         self._notify_event(lambda l: l.notify_program_started(mainpath, args, caller))
       else:
-        pass #notify error 'File not found'
+        # Notify file error
+        self._notify_event(lambda l: l.notify_program_unknow_file_error(mainpath, caller))
     else:
       # Notify exec in progress
       user_exec = self._project_execs[caller]
@@ -701,6 +702,7 @@ class Core(object):
    - notify_program_output(output, caller)
    - notify_program_ended(exitcode, caller)
 
+   - notify_program_unknow_file_error(filename, caller)
    - notify_program_running_error(running_file, running_args, caller)
    - notify_program_no_running_error(caller)
   """
